@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <title>MS-DOS</title>
+    <style>
+        body {
+            background-color: black;
+            color: #FFFFFF;
+            font-family: 'Fira Code', 'Cascadia Code', monospace;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            background-color: black;
+            color: white;
+            border: none;
+            font-family: 'Fira Code', 'Cascadia Code', monospace;
+            resize: none;
+            outline: none;
+            overflow: auto;
+        }
+        input {
+            width: 100%;
+            background-color: black;
+            color: white;
+            border: none;
+            font-family: 'Fira Code', 'Cascadia Code', monospace;
+            outline: none;
+        }
+        ::selection {
+            background-color: white;
+            color: #000000;
+        }
+    </style>
+</head>
+<body>
+    <textarea id="output" readonly>A> ver
+MS-DOS Version 3.30
+A></textarea>
+    <input type="text" id="commandInput" placeholder="Type a command...">
+    
+    <script>
+        const output = document.getElementById('output');
+        const commandInput = document.getElementById('commandInput');
+
+        const loadStorage = () => {
+    const storedFiles = localStorage.getItem('files');
+    const storedFolders = localStorage.getItem('folders');
+    
+    return {
+        files: storedFiles ? JSON.parse(storedFiles) : [], // Ensure this is an array
+        folders: storedFolders ? JSON.parse(storedFolders) : [], // Ensure this is an array
+    };
+};
+
+let { files, folders } = loadStorage();
+
+// Debugging line to check the value of files
+console.log('Loaded files:', files);
+
+// Check if files is an array before using reduce
+if (Array.isArray(files)) {
+    let totalSize = files.reduce((sum, file) => sum + file.size, 0);
+} else {
+    console.error('Files is not an array:', files);
+    let totalSize = 0; // Default to 0 if it's not an array
+}
+
+const MAX_STORAGE = 512 * 1024; // 512 KB in bytes
+let currentDrive = 'A'; // Current drive
+
+const saveStorage = () => {
+    localStorage.setItem('files', JSON.stringify(files));
+    localStorage.setItem('folders', JSON.stringify(folders));
+};
+
+        commandInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                const command = commandInput.value.trim();
+                output.value += `\n${currentDrive}> ${command}`;
+                
+                const [cmd, ...args] = command.split(' ');
+
+                switch (cmd.toLowerCase()) {
+                    case 'ver':
+                        output.value += `\nMS-DOS Version 3.30`;
+                        break;
+                    case 'dir':
+                        output.value += `\nVolume in drive ${currentDrive} is DOS\n Directory of ${currentDrive}:\n\n` + 
+                            (files.length ? files.map(file => file.name).join('\n') : 'No files') + '\n' +
+                            (folders.length ? folders.join('\n') : 'No folders') + `\n\n${files.length + folders.length} Item(s) ${totalSize} bytes;`;
+                        break;
+                    case 'cd':
+                        const folderName = args.join(' ');
+                        if (folders.includes(folderName)) {
+                            output.value += `\nChanged directory to ${folderName}`;
+                        } else {
+                            output.value += `\n"${folderName}" not found.`;
+                        }
+                        break;
+                    case 'cls':
+                        output.value = 'A> ver\nMS-DOS Version 3.30'; 
+                        break;
+                    case 'exit':
+                        output.value += `\nExiting the command line...`;
+                        setTimeout(() => {
+                            const confirmation = confirm('Are you sure you want to close this tab?');
+                            if (confirmation) {
+                                window.close();
+                            }
+                        }, 2000);
+                        break;
+                    case 'del':
+                        const deleteItem = args.join(' ');
+                        const fileToDelete = files.find(file => file.name === deleteItem);
+                        if (fileToDelete) {
+                            totalSize -= fileToDelete.size;
+                            files.splice(files.indexOf(fileToDelete), 1);
+                            output.value += `\nDeleted file "${deleteItem}".`;
+                            saveStorage();
+                        } else if (folders.includes(deleteItem)) {
+                            folders.splice(folders.indexOf(deleteItem), 1);
+                            output.value += `\nDeleted folder "${deleteItem}".`;
+                            saveStorage();
+                        } else {
+                            output.value += `\n"${deleteItem}" not found.`;
+                        }
+                        break;
+                    case 'copy':
+                        if (args[0] === 'con' && args.length === 2) {
+                            const newFileName = args[1];
+                            output.value += `\nEntering input mode for file "${newFileName}". Type your content, then press Ctrl+Z to save.`;
+                            
+                            commandInput.value = ''; // Clear the input for user to type content
+                            commandInput.focus(); // Focus on input
+
+                            const onKeyPress = (e) => {
+                                if (e.key === 'Enter') {
+                                    const contentToAdd = commandInput.value.trim();
+                                    if (contentToAdd) {
+                                        if (totalSize + contentToAdd.length > MAX_STORAGE) {
+                                            output.value += `\nInsufficient space on disk`;
+                                        } else {
+                                            files.push({ name: newFileName, size: contentToAdd.length });
+                                            totalSize += contentToAdd.length;
+                                            output.value += `\nFile "${newFileName}" created with content: "${contentToAdd}"`;
+                                            saveStorage();
+                                            commandInput.value = ''; // Clear input
+                                        }
+                                    }
+                                } else if (e.key === 'z' && e.ctrlKey) { // Detect Ctrl+Z
+                                    commandInput.removeEventListener('keypress', onKeyPress); // Remove listener
+                                    output.value += `\nInput ended.`;
+                                }
+                            };
+                            commandInput.addEventListener('keypress', onKeyPress);
+                        } else {
+                            output.value += `\nInvalid command or syntax. Usage: COPY CON [filename]`;
+                        }
+                        break;
+                    case 'mkdir':
+                    case 'md':
+                        if (totalSize >= MAX_STORAGE) {
+                            output.value += `\nInsufficient space on disk`;
+                        } else {
+                            const newFolderName = args.join(' ');
+                            if (!folders.includes(newFolderName) && newFolderName) {
+                                folders.push(newFolderName);
+                                output.value += `\nDirectory "${newFolderName}" created.`;
+                                saveStorage();
+                            } else {
+                                output.value += `\nDirectory "${newFolderName}" already exists or invalid name.`;
+                            }
+                        }
+                        break;
+                    case 'type':
+                        const fileToType = args.join(' ');
+                        const foundFile = files.find(file => file.name === fileToType);
+                        output.value += foundFile ? `\nDisplaying contents of "${fileToType}":\n[File content here...]` : `\n"${fileToType}" not found.`;
+                        break;
+                    case 'echo':
+                        const echoMessage = args.join(' ');
+                        output.value += echoMessage.length === 0 ? `\nECHO is on` : `\n${echoMessage}`;
+                        break;
+                    case 'ren':
+                        if (args.length < 2) {
+                            output.value += `\nUsage: ren [oldname] [newname]`;
+                        } else {
+                            const oldName = args[0];
+                            const newName = args[1];
+                            const fileToRename = files.find(file => file.name === oldName);
+                            if (fileToRename) {
+                                fileToRename.name = newName;
+                                output.value += `\nRenamed "${oldName}" to "${newName}".`;
+                                saveStorage();
+                            } else {
+                                output.value += `\n"${oldName}" not found.`;
+                            }
+                        }
+                        break;
+                    case 'a:':
+                        currentDrive = 'A';
+                        output.value += `\nSwitched to drive A:`;
+                        break;
+                    case 'b:':
+                        currentDrive = 'B';
+                        output.value += `\nSwitched to drive B:`;
+                        break;
+                    case 'c:':
+                        currentDrive = 'C';
+                        output.value += `\nSwitched to drive C:`;
+                        break;
+                    case 'd:':
+                        currentDrive = 'D';
+                        output.value += `\nSwitched to drive D:`;
+                        break;
+                    case 'win':
+                        window.location.href = "windows1.0.htm";
+                        break;
+                    default:
+                        output.value += `\n${command} is not recognized as an internal or external command,\noperable program or batch file.`;
+                }
+                
+                commandInput.value = '';
+                output.scrollTop = output.scrollHeight; // Scroll to bottom
+            }
+        });
+    </script>
+</body>
+</html>
